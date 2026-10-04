@@ -1,4 +1,4 @@
-import {Button, Box, Text} from "@chakra-ui/react";
+import {Button, Box, Text, Container} from "@chakra-ui/react";
 
 function App(){
   return(
@@ -15,9 +15,11 @@ function App(){
           シンプル家計簿
         </Text>
       </Box>
-      <Button colorPalette="teal" fontWeight="bold">
-        登録
-      </Button>
+      <Container as="main" maxW="4xl" py={10}>
+        <Button colorPalette="teal" fontWeight="bold">
+          登録
+        </Button>
+      </Container>
     </>
   );
 }
