@@ -1,3 +1,4 @@
+import {useAddTransactions} from "../hooks/useAddTransactions";
 import { Header } from "@/components/Header";
 import {
   Button,
@@ -15,6 +16,7 @@ import { useNavigate } from "react-router";
 type TransactionType = "income" | "expense";
 
 function InputPage() {
+  const {addTransaction, createTransactionData} = useAddTransactions();
   const [transactionType, setTransactionType] =
     React.useState<TransactionType>("expense");
 
@@ -22,24 +24,28 @@ function InputPage() {
   const [amount, setAmount] = React.useState("");
   const [date, setDate] = React.useState("");
 
-  const navigate = useNavigate();
+  const navigate = useNavigate(); 
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async(e: React.FormEvent) => {
     e.preventDefault();
     // amountを数値に変換
-    let adjustedAmount = Number(amount);
-    // 支出の場合はamountをマイナスに変換
-    if (transactionType === "expense" && adjustedAmount > 0) {
-      adjustedAmount = -adjustedAmount;
-    }
-    // フォーム送信の処理をここに追加
-    console.log({
+    const adjustedAmount = Number(amount);
+
+    const transactionData = createTransactionData(
+      transactionType,
       item,
       adjustedAmount,
-      date,
-    });
-    // トップページへ遷移
-    navigate("/");
+      date
+    )
+
+    try{
+      await addTransaction(transactionData);
+
+      navigate("/");
+    } catch(err){
+      alert("取引に失敗しました");
+      console.error(err);
+    }
   };
 
   const onCancel = () => {

@@ -1,5 +1,7 @@
 import React from "react";
 import {Box, Flex, Separator, Stack, Text} from "@chakra-ui/react";
+import {useIncomeTransactions} from "../hooks/useIncomeTransactions"
+import {useExpenseTransactions} from "../hooks/useExpenseTransactions"
 
 type Transaction = {
   id: number;
@@ -11,16 +13,13 @@ type Transaction = {
 export const RecentIncomeTransactionList: React.FC<{
   maxTransactions: number;
 }> = ({maxTransactions}) => {
-  const transactionList: Transaction[] = [
-    {id: 6, item: "ギフト", amount: 3000, date: "2026-10-06"},
-    {id: 5, item: "ボーナス", amount: 50000, date: "2026-10-05"},
-    {id: 4, item: "アルバイト", amount: 10000, date: "2026-10-04"},
-    {id: 3, item: "フリーランス", amount: 20000, date: "2026-10-03"},
-    {id: 2, item: "投資収益", amount: 15000, date: "2026-10-02"},
-    {id: 1, item: "給料", amount: 300000, date: "2026-10-01"},
-  ];
+  const {transactionList} = useIncomeTransactions();
 
-  const recentTransactions = transactionList.slice(0, maxTransactions);
+  if (!transactionList){
+    return <Text>収入データがありません</Text>;
+  }
+
+  const recentTransactions = transactionList.transactions.slice(0, maxTransactions);
 
   return <TransactionList transactions={recentTransactions} />;
 };
@@ -28,16 +27,14 @@ export const RecentIncomeTransactionList: React.FC<{
 export const RecentExpenseTransactionList: React.FC<{
   maxTransactions: number;
 }> =  ({maxTransactions}) => {
-  const transactionList: Transaction[] = [
-    {id: 6, item: "食費", amount: -5000, date: "2026-10-06"},
-    {id: 5, item: "交際費", amount: -10000, date: "2026-10-05"},
-    {id: 4, item: "娯楽費", amount: -8000, date: "2026-10-04"},
-    {id: 3, item: "交通費", amount: -3000, date: "2026-10-03"},
-    {id: 2, item: "通信費", amount: -5000, date: "2026-10-02"},
-    {id: 1, item: "光熱費", amount: -12000, date: "2026-10-01"},
-  ];
+  const {transactionList} = useExpenseTransactions();
 
-  const recentTransactions = transactionList.slice(0, maxTransactions);
+
+  if (!transactionList) {
+    return <Text>支出データが存在しません</Text>;
+  }
+
+  const recentTransactions = transactionList.transactions.slice(0, maxTransactions);
 
   return <TransactionList transactions={recentTransactions} />;
 };
