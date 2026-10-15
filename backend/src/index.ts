@@ -3,7 +3,6 @@ import { Hono } from 'hono';
 import {cors} from "hono/cors";
 import {env} from "./env.js";
 import {Client} from "pg";
-import {saerver} from "@hono/node-server";
 
 const client = new Client({
   host: env.DATABASE_HOST,
