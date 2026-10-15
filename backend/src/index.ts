@@ -3,13 +3,15 @@ import { Hono } from 'hono';
 import {cors} from "hono/cors";
 import {env} from "./env.js";
 import {Client} from "pg";
+import {saerver} from "@hono/node-server";
 
 const client = new Client({
-  host: "localhost",
-  port:5432,
-  database: "kakeibo_db",
-  user: "postgres",
-  password: "haruki180303"
+  host: env.DATABASE_HOST,
+  port :env.DATABASE_PORT,
+  database: env.DATABASE_NAME,
+  user: env.DATABASE_USER,
+  password: env.DATABASE_PASSWORD,
+  ssl: {rejectUnauthorized: false}
 })
 
 await client.connect();
@@ -116,4 +118,5 @@ serve({
   port: 3000
 }, (info) => {
   console.log(`Server is running on http://localhost:${info.port}`)
-})
+});
+export default app
