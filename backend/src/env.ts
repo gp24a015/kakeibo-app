@@ -9,7 +9,7 @@ export const env = createEnv({
     DATABASE_PORT: z.string().transform((val) => parseInt(val)),
     DATABASE_NAME: z.string(),
     DATABASE_USER: z.string(),
-    DATABASE_PASSWORD: z.string()
+    DATABASE_PASSWORD: z.string(),
   },
   runtimeEnv: process.env,
-})
+});

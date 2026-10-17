@@ -11,7 +11,7 @@ const client = new Client({
   user: env.DATABASE_USER,
   password: env.DATABASE_PASSWORD,
   ssl: {rejectUnauthorized: false}
-})
+});
 
 await client.connect();
 
@@ -112,10 +112,4 @@ app.post("/transactions", async (c) => {
   return c.json(newTransaction, 201);
 });                                                                                
 
-serve({
-  fetch: app.fetch,
-  port: 3000
-}, (info) => {
-  console.log(`Server is running on http://localhost:${info.port}`)
-});
 export default app
