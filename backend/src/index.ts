@@ -1,25 +1,23 @@
-import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import {cors} from "hono/cors";
-import {env} from "./env.js";
-import {Client} from "pg";
+import { cors } from "hono/cors";
+import { env, getDatabaseConfig } from "./env.js";
+import { Pool } from "pg";
 
-const client = new Client({
-  host: env.DATABASE_HOST,
-  port :env.DATABASE_PORT,
-  database: env.DATABASE_NAME,
-  user: env.DATABASE_USER,
-  password: env.DATABASE_PASSWORD,
-  ssl: {rejectUnauthorized: false}
-});
-
-await client.connect();
+let pool: Pool | undefined;
+const getPool = () => {
+  pool ??= new Pool({
+    ...getDatabaseConfig(),
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+  });
+  return pool;
+};
 
 const toYMD = (d: Date) => {
   return d.toISOString().slice(0, 10);
-}
+};
 
-const app = new Hono()
+const app = new Hono();
 
 app.use(
   "/*",
@@ -56,8 +54,8 @@ app.get("/transactions", async (c) => {
 
   historyQuery += ' ORDER BY date DESC';
 
-  const historyResult = await client.query(historyQuery, params);
-  const countResult = await client.query(countQuery, params);
+  const historyResult = await getPool().query(historyQuery, params);
+  const countResult = await getPool().query(countQuery, params);
 
   const transactions = historyResult.rows.map((row) => ({
     id: parseInt(row.id),
@@ -78,13 +76,13 @@ app.get("/transactions", async (c) => {
   };
 
   return c.json(result, 200);
-})
+});
 
 app.post("/transactions", async (c) => {
   const body = await c.req.json();
 
-  const {item, amount, date} = body;
-  
+  const { item, amount, date } = body;
+
   if (!item || amount === undefined || !date) {
     return c.json({message: "必須項目が不足しています"}, 400);
   }
@@ -97,7 +95,7 @@ app.post("/transactions", async (c) => {
     return c.json({message: "日付はYYYY-MM-DD形式で入力してください"}, 400);
   }
 
-  const result = await client.query(
+  const result = await getPool().query(
     'INSERT INTO transactions (item, amount, date) VALUES ($1, $2, $3) RETURNING id, item, amount, date',
     [item, amount, date]
   );
@@ -106,10 +104,10 @@ app.post("/transactions", async (c) => {
     id: parseInt(result.rows[0].id),
     item: result.rows[0].item,
     amount: parseFloat(result.rows[0].amount),
-    date: toYMD(new Date(result.rows[0].date))
-  }
+    date: toYMD(new Date(result.rows[0].date)),
+  };
 
   return c.json(newTransaction, 201);
-});                                                                                
+});
 
-export default app
+export default app;

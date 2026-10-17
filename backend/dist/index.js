@@ -1,17 +1,16 @@
-import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from "hono/cors";
-import { env } from "./env.js";
-import { Client } from "pg";
-const client = new Client({
-    host: env.DATABASE_HOST,
-    port: env.DATABASE_PORT,
-    database: env.DATABASE_NAME,
-    user: env.DATABASE_USER,
-    password: env.DATABASE_PASSWORD,
-    ssl: { rejectUnauthorized: false }
-});
-await client.connect();
+import { env, getDatabaseConfig } from "./env.js";
+import { Pool } from "pg";
+let pool;
+const getPool = () => {
+    pool ??= new Pool({
+        ...getDatabaseConfig(),
+        ssl: { rejectUnauthorized: false },
+        max: 1,
+    });
+    return pool;
+};
 const toYMD = (d) => {
     return d.toISOString().slice(0, 10);
 };
@@ -36,8 +35,8 @@ app.get("/transactions", async (c) => {
         countQuery += addTypeQuery;
     }
     historyQuery += ' ORDER BY date DESC';
-    const historyResult = await client.query(historyQuery, params);
-    const countResult = await client.query(countQuery, params);
+    const historyResult = await getPool().query(historyQuery, params);
+    const countResult = await getPool().query(countQuery, params);
     const transactions = historyResult.rows.map((row) => ({
         id: parseInt(row.id),
         item: row.item,
@@ -64,19 +63,13 @@ app.post("/transactions", async (c) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return c.json({ message: "日付はYYYY-MM-DD形式で入力してください" }, 400);
     }
-    const result = await client.query('INSERT INTO transactions (item, amount, date) VALUES ($1, $2, $3) RETURNING id, item, amount, date', [item, amount, date]);
+    const result = await getPool().query('INSERT INTO transactions (item, amount, date) VALUES ($1, $2, $3) RETURNING id, item, amount, date', [item, amount, date]);
     const newTransaction = {
         id: parseInt(result.rows[0].id),
         item: result.rows[0].item,
         amount: parseFloat(result.rows[0].amount),
-        date: toYMD(new Date(result.rows[0].date))
+        date: toYMD(new Date(result.rows[0].date)),
     };
     return c.json(newTransaction, 201);
-});
-serve({
-    fetch: app.fetch,
-    port: 3000
-}, (info) => {
-    console.log(`Server is running on http://localhost:${info.port}`);
 });
 export default app;
