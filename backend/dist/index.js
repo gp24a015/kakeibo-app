@@ -4,11 +4,18 @@ import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
 let pool;
 const getPool = () => {
-    pool ??= new Pool({
-        ...getDatabaseConfig(),
-        ssl: { rejectUnauthorized: false },
-        max: 1,
-    });
+    if (!pool) {
+        const databaseConfig = getDatabaseConfig();
+        pool = new Pool({
+            host: databaseConfig.DATABASE_HOST,
+            port: databaseConfig.DATABASE_PORT,
+            database: databaseConfig.DATABASE_NAME,
+            user: databaseConfig.DATABASE_USER,
+            password: databaseConfig.DATABASE_PASSWORD,
+            ssl: { rejectUnauthorized: false },
+            max: 1,
+        });
+    }
     return pool;
 };
 const toYMD = (d) => {
