@@ -85,6 +85,7 @@ app.get("/transactions", async (c) => {
   return c.json(result, 200);
 });
 
+//ポストを行うAPI
 app.post("/transactions", async (c) => {
   const body = await c.req.json();
 
@@ -115,6 +116,26 @@ app.post("/transactions", async (c) => {
   };
 
   return c.json(newTransaction, 201);
+});
+
+//削除を行うAPI
+app.delete("/transactions/:id", async (c) => {
+  const id = c.req.param("id"); // 例: "12"
+  const numericId = Number(id); // 例: 12
+  
+  if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) {
+    return c.json({ message: "idは正の整数である必要があります" }, 400);
+}
+  const result = await getPool().query(
+    'DELETE FROM transactions WHERE id = $1 RETURNING id',[numericId]
+  );
+
+  if (result.rowCount != 1){
+    return c.json({message: "削除が正常に行えませんでした"}, 404);
+  }
+
+
+  return c.body(null,204);
 });
 
 export default app;

@@ -4,8 +4,7 @@ info:
   version: 1.0.0
   description: |
     Honoで実装された家計簿アプリのバックエンドAPIです。
-    現在、取引一覧は固定のサンプルデータを返し、登録データの永続化や
-    typeによる一覧の絞り込みは実装されていません。
+    取引データはPostgreSQLに保存されます。
 servers:
   - url: http://localhost:3000
     description: ローカル開発環境
@@ -22,8 +21,7 @@ paths:
       summary: 取引一覧を取得
       description: |
         取引一覧と件数・合計金額を返します。
-        typeは必須ですが、現状の実装では値の検証のみ行い、
-        typeによる絞り込みは行いません。
+        typeに応じて収入、支出、または全取引を取得します。
       operationId: getTransactions
       parameters:
         - name: type
@@ -87,12 +85,13 @@ paths:
                   date: "2025-01-03"
       responses:
         "201":
-          description: 取引の検証に成功（現時点では保存されません）
+          description: 取引の登録に成功
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/NewTransaction"
               example:
+                id: 3
                 item: 食費
                 amount: -10000
                 date: "2025-01-03"

@@ -7,7 +7,7 @@ import {
   Grid,
   GridItem,
 } from "@chakra-ui/react";
-import {FaPlus} from "react-icons/fa";
+import {FaPlus, FaTrash} from "react-icons/fa";
 import {
   RecentIncomeTransactionList,
   RecentExpenseTransactionList,
@@ -23,7 +23,16 @@ function Home(){
       <Container as="main" maxW="4xl" py={10}>
         <Grid templateColumns="repeat(2, 1fr)" gap={6}>
           <GridItem colSpan={2}>
-            <Flex justifyContent="flex-end">
+            <Flex justifyContent="flex-end" gap={3}>
+              <Button
+                colorPalette="red"
+                variant="outline"
+                fontWeight="bold"
+                onClick={() => navigate("/delete")}
+              >
+                <FaTrash />
+                削除
+              </Button>
               <Button 
                 colorPalette="teal" 
                 fontWeight="bold" 

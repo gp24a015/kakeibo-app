@@ -1,69 +1,36 @@
-# React + TypeScript + Vite
+# フロントエンド
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React、TypeScript、Vite を使った家計簿アプリのフロントエンドです。
 
-Currently, two official plugins are available:
+## 開発環境での起動
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```sh
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+表示された URL をブラウザーで開くと、開発中のアプリを確認できます。開発サーバーは通常、コードを変更すると画面を自動更新します（HMR）。
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 利用できるコマンド
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+| コマンド | 内容 |
+| --- | --- |
+| `npm run dev` | 開発サーバーを起動する |
+| `npm run build` | TypeScript のチェックを行い、本番用ファイルを `dist` に出力する |
+| `npm run lint` | ESLint でコードをチェックする |
+| `npm run preview` | ビルドしたファイルをローカルでプレビューする |
+
+## React の高速更新
+
+Vite の React プラグインによって、開発中にページ全体を再読み込みせずに変更を反映できます。公式プラグインには次の選択肢があります。
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react)：Babel を使います
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc)：SWC を使います
+
+このプロジェクトでは `@vitejs/plugin-react` を使用しています。
+
+## ESLint の設定について
+
+現在の設定は基本的なチェックを行います。プロダクション向けに開発を進める場合は、TypeScript の型情報を利用した ESLint ルールを追加すると、より詳しいチェックができます。設定例は [typescript-eslint のドキュメント](https://typescript-eslint.io/getting-started/typed-linting/)を参照してください。
+
+React 固有のルールが必要な場合は、[eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) と [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) も利用できます。
