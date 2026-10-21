@@ -2,6 +2,26 @@ import { Hono } from 'hono';
 import { cors } from "hono/cors";
 import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
+import {z} from "zod";
+import { randomBytes, scrypt as scryptCallback } from "node:crypto";
+
+//ハッシュ関数
+const hashPassword = async (password: string): Promise<string> => {
+  const salt = randomBytes(16);
+
+  const key = await new Promise<Buffer>((resolve, reject) => {
+    scryptCallback(password, salt, 64, (error, derivedKey) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(derivedKey);
+    });
+  });
+
+  return `${salt.toString("hex")}:${key.toString("hex")}`;
+};
 
 let pool: Pool | undefined;
 const getPool = () => {
@@ -133,9 +153,49 @@ app.delete("/transactions/:id", async (c) => {
   if (result.rowCount != 1){
     return c.json({message: "削除が正常に行えませんでした"}, 404);
   }
-
-
   return c.body(null,204);
+});
+
+//サインアップ機能のAPI
+app.post("/auth/signup", async (c) => {
+  const body: unknown = await c.req.json().catch(() => null);
+
+  const signupSchema = z.object({
+    userId: z.string().trim().min(1).max(50),
+    password: z.string().min(8).max(128),
+  });
+
+  const parsed = signupSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json(
+      { message: "IDは1〜50文字、パスワードは8〜128文字で入力してください" },
+      400,
+    );
+  }
+
+  const { userId, password } = parsed.data;
+  const passwordHash = await hashPassword(password);
+
+  try {
+    await getPool().query(
+      "INSERT INTO users (user_id, password_hash) VALUES ($1, $2)",
+      [userId, passwordHash],
+    );
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "23505"
+    ) {
+      return c.json({ message: "このIDはすでに使われています" }, 409);
+    }
+
+    throw error;
+  }
+
+  return c.json({ message: "登録完了しました" }, 201);
 });
 
 export default app;

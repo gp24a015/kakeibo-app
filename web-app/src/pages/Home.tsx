@@ -25,6 +25,19 @@ function Home(){
           <GridItem colSpan={2}>
             <Flex justifyContent="flex-end" gap={3}>
               <Button
+                variant="outline"
+                onClick={() => navigate("/login")}
+              >
+                ログイン
+              </Button>
+              <Button
+                colorPalette="teal"
+                variant="outline"
+                onClick={() => navigate("/signup")}
+              >
+                サインアップ
+              </Button>
+              <Button
                 colorPalette="red"
                 variant="outline"
                 fontWeight="bold"
