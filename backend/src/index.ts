@@ -3,7 +3,13 @@ import { cors } from "hono/cors";
 import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
 import {z} from "zod";
-import { randomBytes, scrypt as scryptCallback } from "node:crypto";
+import {
+  createHash,
+  randomBytes,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from "node:crypto";
+import { setCookie } from "hono/cookie";
 
 //ハッシュ関数
 const hashPassword = async (password: string): Promise<string> => {
@@ -22,6 +28,42 @@ const hashPassword = async (password: string): Promise<string> => {
 
   return `${salt.toString("hex")}:${key.toString("hex")}`;
 };
+
+//パスワードハッシュ一致判定
+const verifyPassword = async (
+  password: string,
+  storedHash: string,
+): Promise<boolean> => {
+  const [saltHex, keyHex] = storedHash.split(":");
+
+  if (
+    !saltHex ||
+    !keyHex ||
+    !/^[a-f\d]{32}$/i.test(saltHex) ||
+    !/^[a-f\d]{128}$/i.test(keyHex)
+  ) {
+    return false;
+  }
+
+  const salt = Buffer.from(saltHex, "hex");
+  const expectedKey = Buffer.from(keyHex, "hex");
+
+  const actualKey = await new Promise<Buffer>((resolve, reject) => {
+    scryptCallback(password, salt, expectedKey.length, (error, key) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(key);
+    });
+  });
+
+  return timingSafeEqual(actualKey, expectedKey);
+};
+
+//セッションIDのハッシュ関数
+const hashSessionToken = (token: string): string =>
+  createHash("sha256").update(token).digest("hex");
 
 let pool: Pool | undefined;
 const getPool = () => {
@@ -196,6 +238,52 @@ app.post("/auth/signup", async (c) => {
   }
 
   return c.json({ message: "登録完了しました" }, 201);
+});
+
+app.post("/auth/login", async (c) => {
+  const body: unknown = await c.req.json().catch(() => null);
+
+  const loginSchema = z.object({
+    userId: z.string().trim().min(1).max(50),
+    password: z.string().min(1).max(128),
+  });
+
+  const parsed = loginSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return c.json({ message: "IDとパスワードを入力してください" }, 400);
+  }
+
+  const { userId, password } = parsed.data;
+
+  const result = await getPool().query(
+    "SELECT id, user_id, password_hash FROM users WHERE user_id = $1",
+    [userId],
+  );
+
+  const user = result.rows[0];
+
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
+    return c.json({ message: "IDまたはパスワードが正しくありません" }, 401);
+  }
+
+  const sessionToken = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await getPool().query(
+    "INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
+    [hashSessionToken(sessionToken), user.id, expiresAt],
+  );
+
+  setCookie(c, "kakeibo_session", sessionToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60,
+  });
+
+  return c.json({ user: { id: user.id, userId: user.user_id } }, 200);
 });
 
 export default app;

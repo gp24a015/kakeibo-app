@@ -26,42 +26,44 @@ function AuthPage({ mode }: AuthPageProps) {
   const isSignup = mode === "signup";
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
-  setMessage("");
+    event.preventDefault();
+    setMessage("");
 
-  if (!isSignup) {
-    setMessage("ログインAPIはまだ接続されていません。");
-    return;
-  }
-
-  if (password !== confirmPassword) {
-    setMessage("パスワードが一致しません。");
-    return;
-  }
-
-  setIsSubmitting(true);
-
-  try {
-    const response = await fetch(`${BASE_URL}/auth/signup`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ userId, password }),
-    });
-
-    const result = (await response.json()) as { message?: string };
-
-    if (!response.ok) {
-      setMessage(result.message ?? "登録に失敗しました。");
+    if (isSignup && password !== confirmPassword) {
+      setMessage("パスワードが一致しません。");
       return;
     }
 
-    navigate("/login", {
-      state: { message: result.message ?? "登録しました。ログインしてください。" },
-    });
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(
+        `${BASE_URL}/auth/${isSignup ? "signup" : "login"}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ userId, password }),
+        },
+      );
+
+      const result = (await response.json()) as { message?: string };
+
+      if (!response.ok) {
+        setMessage(
+          result.message ??
+            (isSignup ? "登録に失敗しました。" : "ログインに失敗しました。"),
+        );
+        return;
+      }
+
+      if (isSignup) {
+        navigate("/login");
+      } else {
+        navigate("/");
+      }
     } catch (error) {
       console.error(error);
       setMessage("サーバーに接続できませんでした。");
