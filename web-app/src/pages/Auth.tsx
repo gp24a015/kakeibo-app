@@ -49,7 +49,10 @@ function AuthPage({ mode }: AuthPageProps) {
         },
       );
 
-      const result = (await response.json()) as { message?: string };
+      const result = (await response.json()) as {
+        message?: string;
+        user?: { id: number; userId: string };
+      };
 
       if (!response.ok) {
         setMessage(
@@ -62,6 +65,9 @@ function AuthPage({ mode }: AuthPageProps) {
       if (isSignup) {
         navigate("/login");
       } else {
+        if (!result.user) {
+          throw new Error("ログイン応答にユーザー情報がありません。");
+        }
         navigate("/");
       }
     } catch (error) {

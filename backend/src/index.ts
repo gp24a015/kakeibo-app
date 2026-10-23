@@ -132,6 +132,20 @@ app.use(
   }),
 );
 
+app.get("/auth/me", requireAuthenticatedUser, async (c) => {
+  const result = await getPool().query(
+    "SELECT user_id FROM users WHERE id = $1",
+    [c.get("userId")],
+  );
+  const user = result.rows[0];
+
+  if (!user) {
+    return c.json({ message: "ユーザーが見つかりません" }, 401);
+  }
+
+  return c.json({ userId: user.user_id });
+});
+
 app.get("/transactions",requireAuthenticatedUser,  async (c) => {
   const type = c.req.query("type");
 

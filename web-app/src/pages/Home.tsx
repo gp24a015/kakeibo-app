@@ -43,9 +43,8 @@ function Home(){
           setSession({ status: "unauthenticated" });
           return;
         }
-
         if (!response.ok) {
-          throw new Error(`セッション確認に失敗しました (${response.status})`);
+          throw new Error(`ログイン状態の確認に失敗しました (${response.status})`);
         }
 
         const result = (await response.json()) as { userId: string };
@@ -59,7 +58,7 @@ function Home(){
           message:
             error instanceof Error
               ? error.message
-              : "セッションを確認できませんでした。",
+              : "ログイン状態を確認できませんでした。",
         });
       }
     };
@@ -74,34 +73,33 @@ function Home(){
       <Container as="main" maxW="4xl" py={10}>
         <Grid templateColumns="repeat(2, 1fr)" gap={6}>
           <GridItem colSpan={2}>
-            <Flex justifyContent="space-between" alignItems="center" gap={3}>
+            <Flex justifyContent="flex-end" gap={3}>
               {session.status === "authenticated" ? (
-                <Text>ログイン中: {session.userId}</Text>
-              ) : session.status === "unauthenticated" ? (
-                <Text>ログインしていません</Text>
-              ) : session.status === "error" ? (
-                <Text role="alert" color="red.600">{session.message}</Text>
+                <Text alignSelf="center">ログイン中: {session.userId}</Text>
+              ) : session.status === "loading" ? (
+                <Text alignSelf="center">ログイン状態を確認中...</Text>
               ) : (
-                <Text>ログイン状態を確認中...</Text>
+                <>
+                  {session.status === "error" && (
+                    <Text role="alert" color="red.600" alignSelf="center">
+                      {session.message}
+                    </Text>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate("/login")}
+                  >
+                    ログイン
+                  </Button>
+                  <Button
+                    colorPalette="teal"
+                    variant="outline"
+                    onClick={() => navigate("/signup")}
+                  >
+                    サインアップ
+                  </Button>
+                </>
               )}
-              <Flex justifyContent="flex-end" gap={3}>
-                {session.status !== "authenticated" && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => navigate("/login")}
-                    >
-                      ログイン
-                    </Button>
-                    <Button
-                      colorPalette="teal"
-                      variant="outline"
-                      onClick={() => navigate("/signup")}
-                    >
-                      サインアップ
-                    </Button>
-                  </>
-                )}
               <Button
                 colorPalette="red"
                 variant="outline"
@@ -119,7 +117,6 @@ function Home(){
                 <FaPlus/>
                 登録
               </Button>
-              </Flex>
             </Flex>
           </GridItem>
           <GridItem>
