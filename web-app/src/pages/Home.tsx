@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   Button,  
   Container, 
@@ -6,6 +7,7 @@ import {
   Heading,
   Grid,
   GridItem,
+  Text,
 } from "@chakra-ui/react";
 import {FaPlus, FaTrash} from "react-icons/fa";
 import {
@@ -15,28 +17,91 @@ import {
 import {Header} from "@/components/Header";
 import {useNavigate} from "react-router";
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+
+type SessionState =
+  | { status: "loading" }
+  | { status: "authenticated"; userId: string }
+  | { status: "unauthenticated" }
+  | { status: "error"; message: string };
+
 function Home(){
   const navigate = useNavigate();
+  const [session, setSession] = useState<SessionState>({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const checkSession = async () => {
+      try {
+        const response = await fetch(`${BASE_URL}/auth/me`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+
+        if (response.status === 401) {
+          setSession({ status: "unauthenticated" });
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`セッション確認に失敗しました (${response.status})`);
+        }
+
+        const result = (await response.json()) as { userId: string };
+        setSession({ status: "authenticated", userId: result.userId });
+      } catch (error) {
+        if (controller.signal.aborted) {
+          return;
+        }
+        setSession({
+          status: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "セッションを確認できませんでした。",
+        });
+      }
+    };
+
+    void checkSession();
+    return () => controller.abort();
+  }, []);
+
   return(
     <>
       <Header />
       <Container as="main" maxW="4xl" py={10}>
         <Grid templateColumns="repeat(2, 1fr)" gap={6}>
           <GridItem colSpan={2}>
-            <Flex justifyContent="flex-end" gap={3}>
-              <Button
-                variant="outline"
-                onClick={() => navigate("/login")}
-              >
-                ログイン
-              </Button>
-              <Button
-                colorPalette="teal"
-                variant="outline"
-                onClick={() => navigate("/signup")}
-              >
-                サインアップ
-              </Button>
+            <Flex justifyContent="space-between" alignItems="center" gap={3}>
+              {session.status === "authenticated" ? (
+                <Text>ログイン中: {session.userId}</Text>
+              ) : session.status === "unauthenticated" ? (
+                <Text>ログインしていません</Text>
+              ) : session.status === "error" ? (
+                <Text role="alert" color="red.600">{session.message}</Text>
+              ) : (
+                <Text>ログイン状態を確認中...</Text>
+              )}
+              <Flex justifyContent="flex-end" gap={3}>
+                {session.status !== "authenticated" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => navigate("/login")}
+                    >
+                      ログイン
+                    </Button>
+                    <Button
+                      colorPalette="teal"
+                      variant="outline"
+                      onClick={() => navigate("/signup")}
+                    >
+                      サインアップ
+                    </Button>
+                  </>
+                )}
               <Button
                 colorPalette="red"
                 variant="outline"
@@ -54,6 +119,7 @@ function Home(){
                 <FaPlus/>
                 登録
               </Button>
+              </Flex>
             </Flex>
           </GridItem>
           <GridItem>

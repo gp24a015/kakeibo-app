@@ -14,7 +14,9 @@ export const useExpenseTransactions = (): TransactionsHooks => {
     setError(null);
     try {
       // 支出データの取得
-      const response = await fetch(`${BASE_URL}/transactions?type=expense`); // ②データの取得
+      const response = await fetch(`${BASE_URL}/transactions?type=expense`, {
+        credentials: "include",
+      }); // ②データの取得
       if (!response.ok) {
         throw new Error("支出データの取得に失敗しました");
       }

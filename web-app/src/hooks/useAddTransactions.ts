@@ -18,6 +18,7 @@ export const useAddTransactions = () => {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify({
           item: transaction.item,
           amount: transaction.amount,

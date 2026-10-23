@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
@@ -9,7 +9,8 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
-import { setCookie } from "hono/cookie";
+import { getCookie, setCookie } from "hono/cookie";
+import type { Context, Next } from "hono";
 
 //ハッシュ関数
 const hashPassword = async (password: string): Promise<string> => {
@@ -86,7 +87,40 @@ const toYMD = (d: Date) => {
   return d.toISOString().slice(0, 10);
 };
 
-const app = new Hono();
+//セッショントークン検証
+type AppEnv = {
+  Variables: {
+    userId: string;
+  };
+};
+
+const app = new Hono<AppEnv>();
+
+const requireAuthenticatedUser: MiddlewareHandler<AppEnv> = async (c, next) => {
+    const sessionToken = getCookie(c, "kakeibo_session");
+
+  if (!sessionToken) {
+    return c.json({ message: "ログインが必要です" }, 401);
+  }
+
+  //トークンをDBのセッションと照合する
+  const result = await getPool().query(
+    `SELECT user_id
+    FROM user_sessions
+    WHERE token_hash = $1
+    AND expires_at > NOW()`,
+    [hashSessionToken(sessionToken)],
+  );
+
+  const session = result.rows[0];
+
+  if (!session) {
+    return c.json({ message: "セッションが無効か、有効期限が切れています" }, 401);
+  }
+
+  c.set("userId", String(session.user_id));
+  await next();
+};
 
 app.use(
   "/*",
@@ -97,6 +131,10 @@ app.use(
     credentials: true,
   }),
 );
+
+app.get("/auth/me", requireAuthenticatedUser, (c) => {
+  return c.json({ userId: c.get("userId") });
+});
 
 app.get("/transactions", async (c) => {
   const type = c.req.query("type");
@@ -240,6 +278,7 @@ app.post("/auth/signup", async (c) => {
   return c.json({ message: "登録完了しました" }, 201);
 });
 
+//ログイン機能のAPI
 app.post("/auth/login", async (c) => {
   const body: unknown = await c.req.json().catch(() => null);
 

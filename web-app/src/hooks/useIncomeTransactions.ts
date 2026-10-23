@@ -15,7 +15,9 @@ export const useIncomeTransactions = (): TransactionsHooks => {
     setError(null);
     try {
       // 収入データの取得
-      const response = await fetch(`${BASE_URL}/transactions?type=income`); // ②データの取得
+      const response = await fetch(`${BASE_URL}/transactions?type=income`, {
+        credentials: "include",
+      }); // ②データの取得
       if (!response.ok) {
         throw new Error("収入データの取得に失敗しました");
       }

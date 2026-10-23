@@ -23,7 +23,9 @@ function DeletePage() {
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
-        const response = await fetch(`${BASE_URL}/transactions?type=all`);
+        const response = await fetch(`${BASE_URL}/transactions?type=all`, {
+          credentials: "include",
+        });
         if (!response.ok) {
           throw new Error("取引一覧の取得に失敗しました");
         }
@@ -51,7 +53,7 @@ function DeletePage() {
     try {
       const response = await fetch(
         `${BASE_URL}/transactions/${transaction.id}`,
-        { method: "DELETE" },
+        { method: "DELETE", credentials: "include" },
       );
       if (!response.ok) {
         throw new Error("取引の削除に失敗しました");
