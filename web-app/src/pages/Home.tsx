@@ -28,6 +28,8 @@ type SessionState =
 function Home(){
   const navigate = useNavigate();
   const [session, setSession] = useState<SessionState>({ status: "loading" });
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -67,6 +69,30 @@ function Home(){
     return () => controller.abort();
   }, []);
 
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      const response = await fetch(`${BASE_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`ログアウトに失敗しました (${response.status})`);
+      }
+
+      setSession({ status: "unauthenticated" });
+    } catch (error) {
+      setLogoutError(
+        error instanceof Error ? error.message : "ログアウトに失敗しました。",
+      );
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
   return(
     <>
       <Header />
@@ -75,7 +101,22 @@ function Home(){
           <GridItem colSpan={2}>
             <Flex justifyContent="flex-end" gap={3}>
               {session.status === "authenticated" ? (
-                <Text alignSelf="center">ログイン中: {session.userId}</Text>
+                <>
+                  <Text alignSelf="center">ログイン中: {session.userId}</Text>
+                  {logoutError && (
+                    <Text role="alert" color="red.600" alignSelf="center">
+                      {logoutError}
+                    </Text>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleLogout()}
+                    loading={isLoggingOut}
+                    disabled={isLoggingOut}
+                  >
+                    ログアウト
+                  </Button>
+                </>
               ) : session.status === "loading" ? (
                 <Text alignSelf="center">ログイン状態を確認中...</Text>
               ) : (

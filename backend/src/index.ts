@@ -9,7 +9,7 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
-import { getCookie, setCookie } from "hono/cookie";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context, Next } from "hono";
 
 //ハッシュ関数
@@ -144,6 +144,26 @@ app.get("/auth/me", requireAuthenticatedUser, async (c) => {
   }
 
   return c.json({ userId: user.user_id });
+});
+
+app.post("/auth/logout", async (c) => {
+  const sessionToken = getCookie(c, "kakeibo_session");
+
+  if (sessionToken) {
+    await getPool().query(
+      "DELETE FROM user_sessions WHERE token_hash = $1",
+      [hashSessionToken(sessionToken)],
+    );
+  }
+
+  deleteCookie(c, "kakeibo_session", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+  });
+
+  return c.body(null, 204);
 });
 
 app.get("/transactions",requireAuthenticatedUser,  async (c) => {
