@@ -132,11 +132,7 @@ app.use(
   }),
 );
 
-app.get("/auth/me", requireAuthenticatedUser, (c) => {
-  return c.json({ userId: c.get("userId") });
-});
-
-app.get("/transactions", async (c) => {
+app.get("/transactions",requireAuthenticatedUser,  async (c) => {
   const type = c.req.query("type");
 
   if (!type || !["income", "expense", "all"].includes(type)) {
@@ -146,15 +142,15 @@ app.get("/transactions", async (c) => {
     );
   }
 
-  let historyQuery = 'SELECT id, item, amount, date FROM transactions';
+  let historyQuery = 'SELECT id, item, amount, date FROM transactions WHERE user_id = $1';
 
-  let countQuery = 'SELECT COUNT(*) as total FROM transactions';
+  let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id = $1';
 
-  const params: string[] = [];
+  const params: string[] = [c.get("userId")];
 
   if (type === "income" || type === "expense"){
     const addTypeQuery = 
-      type === "income" ? ' WHERE amount > 0' : ' WHERE amount < 0' ;
+      type === "income" ? ' AND amount > 0' : ' AND amount < 0' ;
       historyQuery += addTypeQuery;
       countQuery += addTypeQuery;
   }
@@ -186,7 +182,7 @@ app.get("/transactions", async (c) => {
 });
 
 //ポストを行うAPI
-app.post("/transactions", async (c) => {
+app.post("/transactions", requireAuthenticatedUser, async (c) => {
   const body = await c.req.json();
 
   const { item, amount, date } = body;
@@ -204,8 +200,10 @@ app.post("/transactions", async (c) => {
   }
 
   const result = await getPool().query(
-    'INSERT INTO transactions (item, amount, date) VALUES ($1, $2, $3) RETURNING id, item, amount, date',
-    [item, amount, date]
+    `INSERT INTO transactions (item, amount, date, user_id)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, item, amount, date`,
+    [item, amount, date, c.get("userId")],
   );
 
   const newTransaction = {
@@ -219,15 +217,16 @@ app.post("/transactions", async (c) => {
 });
 
 //削除を行うAPI
-app.delete("/transactions/:id", async (c) => {
+app.delete("/transactions/:id", requireAuthenticatedUser, async (c) => {
   const id = c.req.param("id"); // 例: "12"
   const numericId = Number(id); // 例: 12
   
   if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) {
     return c.json({ message: "idは正の整数である必要があります" }, 400);
-}
+  }
   const result = await getPool().query(
-    'DELETE FROM transactions WHERE id = $1 RETURNING id',[numericId]
+    "DELETE FROM transactions WHERE id = $1 AND user_id = $2 RETURNING id",
+    [numericId, c.get("userId")],
   );
 
   if (result.rowCount != 1){

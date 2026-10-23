@@ -1,4 +1,4 @@
-wwwwwwimport { Hono } from "hono";
+import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
@@ -86,17 +86,14 @@ app.use("/*", cors({
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
 }));
-app.get("/auth/me", requireAuthenticatedUser, (c) => {
-    return c.json({ userId: c.get("userId") });
-});
-app.get("/transactions", async (c) => {
+app.get("/transactions", requireAuthenticatedUser, async (c) => {
     const type = c.req.query("type");
     if (!type || !["income", "expense", "all"].includes(type)) {
         return c.json({ message: "typeはincome, expense, allのいずれかである必要があります" }, 400);
     }
-    let historyQuery = 'SELECT id, item, amount, date FROM transactions';
-    let countQuery = 'SELECT COUNT(*) as total FROM transactions';
-    const params = [];
+    let historyQuery = 'SELECT id, item, amount, date FROM transactions WHERE user_id = $1';
+    let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id - $1';
+    const params = [c.get("userId")];
     if (type === "income" || type === "expense") {
         const addTypeQuery = type === "income" ? ' WHERE amount > 0' : ' WHERE amount < 0';
         historyQuery += addTypeQuery;
@@ -120,7 +117,7 @@ app.get("/transactions", async (c) => {
     return c.json(result, 200);
 });
 //ポストを行うAPI
-app.post("/transactions", async (c) => {
+app.post("/transactions", requireAuthenticatedUser, async (c) => {
     const body = await c.req.json();
     const { item, amount, date } = body;
     if (!item || amount === undefined || !date) {
@@ -132,7 +129,9 @@ app.post("/transactions", async (c) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return c.json({ message: "日付はYYYY-MM-DD形式で入力してください" }, 400);
     }
-    const result = await getPool().query('INSERT INTO transactions (item, amount, date) VALUES ($1, $2, $3) RETURNING id, item, amount, date', [item, amount, date]);
+    const result = await getPool().query(`INSERT INTO transactions (item, amount, date, user_id)
+    VALUES ($1, $2, $3, $4)
+    RETURNING id, item, amount, date`, [item, amount, date, c.get("userId")]);
     const newTransaction = {
         id: parseInt(result.rows[0].id),
         item: result.rows[0].item,
@@ -142,13 +141,13 @@ app.post("/transactions", async (c) => {
     return c.json(newTransaction, 201);
 });
 //削除を行うAPI
-app.delete("/transactions/:id", async (c) => {
+app.delete("/transactions/:id", requireAuthenticatedUser, async (c) => {
     const id = c.req.param("id"); // 例: "12"
     const numericId = Number(id); // 例: 12
     if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) {
         return c.json({ message: "idは正の整数である必要があります" }, 400);
     }
-    const result = await getPool().query('DELETE FROM transactions WHERE id = $1 RETURNING id', [numericId]);
+    const result = await getPool().query("DELETE FROM transactions WHERE id = $1 AND user_id = $2 RETURNING id", [numericId, c.get("userId")]);
     if (result.rowCount != 1) {
         return c.json({ message: "削除が正常に行えませんでした" }, 404);
     }
