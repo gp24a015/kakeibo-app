@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+wwwwwwimport { Hono } from "hono";
 import { cors } from "hono/cors";
 import { env, getDatabaseConfig } from "./env.js";
 import { Pool } from "pg";
@@ -68,7 +68,16 @@ const requireAuthenticatedUser = async (c, next) => {
     if (!sessionToken) {
         return c.json({ message: "ログインが必要です" }, 401);
     }
-    // ここでトークンをDBのセッションと照合する
+    //トークンをDBのセッションと照合する
+    const result = await getPool().query(`SELECT user_id
+    FROM user_sessions
+    WHERE token_hash = $1
+    AND expires_at > NOW()`, [hashSessionToken(sessionToken)]);
+    const session = result.rows[0];
+    if (!session) {
+        return c.json({ message: "セッションが無効か、有効期限が切れています" }, 401);
+    }
+    c.set("userId", String(session.user_id));
     await next();
 };
 app.use("/*", cors({
@@ -77,6 +86,9 @@ app.use("/*", cors({
     allowHeaders: ["Content-Type", "Authorization"],
     credentials: true,
 }));
+app.get("/auth/me", requireAuthenticatedUser, (c) => {
+    return c.json({ userId: c.get("userId") });
+});
 app.get("/transactions", async (c) => {
     const type = c.req.query("type");
     if (!type || !["income", "expense", "all"].includes(type)) {
