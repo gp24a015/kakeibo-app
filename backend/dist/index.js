@@ -92,10 +92,10 @@ app.get("/transactions", requireAuthenticatedUser, async (c) => {
         return c.json({ message: "typeはincome, expense, allのいずれかである必要があります" }, 400);
     }
     let historyQuery = 'SELECT id, item, amount, date FROM transactions WHERE user_id = $1';
-    let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id - $1';
+    let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id = $1';
     const params = [c.get("userId")];
     if (type === "income" || type === "expense") {
-        const addTypeQuery = type === "income" ? ' WHERE amount > 0' : ' WHERE amount < 0';
+        const addTypeQuery = type === "income" ? ' AND amount > 0' : ' AND amount < 0';
         historyQuery += addTypeQuery;
         countQuery += addTypeQuery;
     }
