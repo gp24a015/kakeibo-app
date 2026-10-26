@@ -6,7 +6,7 @@
 
 ```bash
 python -m pip install -r requirements.txt
-python -m uvicorn api:app --host 0.0.0.0 --port 8000
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
 起動時に `data/receipt_amount_model.pth` を読み込みます。モデルファイルがない場合、APIは起動に失敗します。
