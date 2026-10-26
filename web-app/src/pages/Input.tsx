@@ -105,7 +105,6 @@ function InputPage() {
   const [amount, setAmount] = React.useState("");
   const [date, setDate] = React.useState("");
 
-  const [receiptText, setReceiptText] = React.useState("");
   const [isReadingReceipt, setIsReadingReceipt] = React.useState(false);
   const [receiptError, setReceiptError] = React.useState("");
 
@@ -129,7 +128,6 @@ function InputPage() {
     }
 
     setReceiptError("");
-    setReceiptText("");
     setIsReadingReceipt(true);
 
     try {
@@ -154,7 +152,6 @@ function InputPage() {
       }
 
       if (ocrResult.status === "fulfilled") {
-        setReceiptText(ocrResult.value);
         const detectedDate = extractReceiptDate(ocrResult.value);
         if (detectedDate) setDate(detectedDate);
       } else {
@@ -225,14 +222,6 @@ function InputPage() {
         {receiptError && (
           <Text role="alert" color="red.600">
             {receiptError}
-          </Text>
-        )}
-
-        {receiptText && (
-          <Text whiteSpace="pre-wrap">
-            OCR結果を確認し、日付を修正してから登録してください。
-            {"\n"}
-            {receiptText}
           </Text>
         )}
 
