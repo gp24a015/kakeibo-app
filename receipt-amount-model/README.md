@@ -3,6 +3,7 @@
 ## 起動
 
 `receipt-amount-model` ディレクトリで依存関係をインストールし、APIを起動します。
+PyTorchはCPU専用版を使用します。
 
 ```bash
 python -m pip install -r requirements.txt
