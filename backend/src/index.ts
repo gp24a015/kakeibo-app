@@ -358,4 +358,61 @@ app.post("/auth/login", async (c) => {
   return c.json({ user: { id: user.id, userId: user.user_id } }, 200);
 });
 
+//推論APIとの通信
+app.post("/receipts/predict", requireAuthenticatedUser, async (c) => {
+  let form: FormData;
+
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json({ message: "画像をフォーム形式で送信してください" }, 400);
+  }
+
+  const file = form.get("file");
+
+  if (!(file instanceof File)) {
+    return c.json({ message: "fileに画像を指定してください" }, 400);
+  }
+
+  if (!file.type.startsWith("image/")) {
+    return c.json({ message: "画像ファイルを指定してください" }, 400);
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    return c.json({ message: "画像は10MB以下にしてください" }, 413);
+  }
+
+  const modelForm = new FormData();
+  modelForm.append("file", file, file.name);
+
+  let response: Response;
+
+  try {
+    response = await fetch(`${env.MODEL_API_URL}/predict`, {
+      method: "POST",
+      body: modelForm,
+    });
+  } catch (error) {
+    console.error("モデルAPIへの接続に失敗しました", error);
+    return c.json({ message: "金額予測サービスに接続できません" }, 502);
+  }
+
+  if (!response.ok) {
+    console.error("モデルAPIがエラーを返しました", response.status);
+    return c.json({ message: "金額を予測できませんでした" }, 502);
+  }
+
+  const result: unknown = await response.json().catch(() => null);
+  const parsed = z.object({
+    predicted_yen: z.number().int(),
+  }).safeParse(result);
+
+  if (!parsed.success) {
+    console.error("モデルAPIのレスポンス形式が不正です");
+    return c.json({ message: "予測サービスから不正な応答がありました" }, 502);
+  }
+
+  return c.json(parsed.data);
+});
+
 export default app;

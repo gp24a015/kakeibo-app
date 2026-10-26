@@ -8,13 +8,94 @@ import {
   HStack,
   Input,
   RadioGroup,
+  Text,
   VStack,
 } from "@chakra-ui/react";
 import React from "react";
 import { useNavigate } from "react-router";
+import { createWorker } from "tesseract.js";
 
 type TransactionType = "income" | "expense";
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+
+//写真からの金額推論機能
+const predictReceiptAmount = async (file: File): Promise<number> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}/receipts/predict`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
+  } catch (error) {
+    console.error("金額予測APIへの接続に失敗しました", error);
+    throw new Error("金額予測サービスに接続できませんでした。");
+  }
+
+  if (response.status === 401) {
+    throw new Error("ログインし直してから、もう一度お試しください。");
+  }
+  if (response.status === 413) {
+    throw new Error("画像は10MB以下にしてください。");
+  }
+  if (!response.ok) {
+    throw new Error(`金額を予測できませんでした（HTTP ${response.status}）。`);
+  }
+
+  const result: unknown = await response.json();
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("predicted_yen" in result) ||
+    typeof result.predicted_yen !== "number" ||
+    !Number.isSafeInteger(result.predicted_yen) ||
+    result.predicted_yen < 0
+  ) {
+    throw new Error("予測サービスから正しい金額を取得できませんでした。");
+  }
+
+  return result.predicted_yen;
+};
+
+const recognizeReceiptText = async (file: File): Promise<string> => {
+  const worker = await createWorker("jpn");
+  try {
+    const {
+      data: { text },
+    } = await worker.recognize(file);
+    return text;
+  } finally {
+    await worker.terminate();
+  }
+};
+
+const extractReceiptDate = (text: string): string => {
+  const match = text.match(
+    /(\d{4})\s*[年/.-]\s*(\d{1,2})\s*[月/.-]\s*(\d{1,2})\s*日?/,
+  );
+  if (!match) return "";
+
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+
+  if (
+    date.getUTCFullYear() !== Number(year) ||
+    date.getUTCMonth() !== Number(month) - 1 ||
+    date.getUTCDate() !== Number(day)
+  ) {
+    return "";
+  }
+
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+};
+
+//追加画面
 function InputPage() {
   const {addTransaction, createTransactionData} = useAddTransactions();
   const [transactionType, setTransactionType] =
@@ -23,6 +104,69 @@ function InputPage() {
   const [item, setItem] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [date, setDate] = React.useState("");
+
+  const [receiptText, setReceiptText] = React.useState("");
+  const [isReadingReceipt, setIsReadingReceipt] = React.useState(false);
+  const [receiptError, setReceiptError] = React.useState("");
+
+  const handleReceiptImage = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setReceiptError("画像ファイルを選択してください。");
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      setReceiptError("画像は10MB以下にしてください。");
+      return;
+    }
+
+    setReceiptError("");
+    setReceiptText("");
+    setIsReadingReceipt(true);
+
+    try {
+      const [predictionResult, ocrResult] = await Promise.allSettled([
+        predictReceiptAmount(file),
+        recognizeReceiptText(file),
+      ]);
+
+      const errors: string[] = [];
+
+      if (predictionResult.status === "fulfilled") {
+        setAmount(String(predictionResult.value));
+        setTransactionType("expense");
+        if (!item.trim()) setItem("レシート支出");
+      } else {
+        console.error("レシート金額の予測に失敗しました", predictionResult.reason);
+        errors.push(
+          predictionResult.reason instanceof Error
+            ? predictionResult.reason.message
+            : "金額を予測できませんでした。",
+        );
+      }
+
+      if (ocrResult.status === "fulfilled") {
+        setReceiptText(ocrResult.value);
+        const detectedDate = extractReceiptDate(ocrResult.value);
+        if (detectedDate) setDate(detectedDate);
+      } else {
+        console.error("レシートの日付読み取りに失敗しました", ocrResult.reason);
+        errors.push("日付を読み取れませんでした。日付を手入力してください。");
+      }
+
+      setReceiptError(errors.join(" "));
+    } finally {
+      setIsReadingReceipt(false);
+    }
+  };
 
   const navigate = useNavigate(); 
 
@@ -65,9 +209,36 @@ function InputPage() {
             as="form"
             onSubmit={handleSubmit}
           >
+
+          <Field.Root>
+          <Field.Label>レシート画像（任意）</Field.Label>
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={handleReceiptImage}
+            disabled={isReadingReceipt}
+          />
+        </Field.Root>
+
+        {isReadingReceipt && <Text>金額と日付を読み取り中...</Text>}
+
+        {receiptError && (
+          <Text role="alert" color="red.600">
+            {receiptError}
+          </Text>
+        )}
+
+        {receiptText && (
+          <Text whiteSpace="pre-wrap">
+            OCR結果を確認し、日付を修正してから登録してください。
+            {"\n"}
+            {receiptText}
+          </Text>
+        )}
+
             {/* 支出・収入の選択ボタン */}
             <RadioGroup.Root
-              defaultValue="expense"
+              value={transactionType}
               onValueChange={(e) =>
                 setTransactionType(e.value as TransactionType)
               }

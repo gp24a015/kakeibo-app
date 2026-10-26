@@ -16,6 +16,7 @@ const databaseEnvSchema = z.object({
 export const env = createEnv({
   server: {
     FRONTEND_URL: z.string().url().transform((value) => new URL(value).origin),
+    MODEL_API_URL: z.string().url(),
   },
   runtimeEnv: process.env,
 });
