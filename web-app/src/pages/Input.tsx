@@ -1,10 +1,12 @@
 import {useAddTransactions} from "../hooks/useAddTransactions";
 import { Header } from "@/components/Header";
 import {
+  Card,
   Button,
   Center,
   Container,
   Field,
+  Heading,
   HStack,
   Input,
   RadioGroup,
@@ -20,6 +22,13 @@ type TransactionType = "income" | "expense";
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
+const getToday = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 //写真からの金額推論機能
 const predictReceiptAmount = async (file: File): Promise<number> => {
@@ -97,16 +106,17 @@ const extractReceiptDate = (text: string): string => {
 
 //追加画面
 function InputPage() {
-  const {addTransaction, createTransactionData} = useAddTransactions();
+  const {addTransaction, createTransactionData, isLoading} = useAddTransactions();
   const [transactionType, setTransactionType] =
     React.useState<TransactionType>("expense");
 
   const [item, setItem] = React.useState("");
   const [amount, setAmount] = React.useState("");
-  const [date, setDate] = React.useState("");
+  const [date, setDate] = React.useState(getToday);
 
   const [isReadingReceipt, setIsReadingReceipt] = React.useState(false);
   const [receiptError, setReceiptError] = React.useState("");
+  const [submitError, setSubmitError] = React.useState("");
 
   const handleReceiptImage = async (
     event: React.ChangeEvent<HTMLInputElement>,
@@ -167,137 +177,182 @@ function InputPage() {
 
   const navigate = useNavigate(); 
 
-  const handleSubmit = async(e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // amountを数値に変換
+    setSubmitError("");
+
+    if (!item.trim()) {
+      setSubmitError("項目を入力してください。");
+      return;
+    }
+
+    if (!amount.trim()) {
+      setSubmitError("金額を入力してください。");
+      return;
+    }
+
     const adjustedAmount = Number(amount);
+    if (!Number.isSafeInteger(adjustedAmount) || adjustedAmount < 0) {
+      setSubmitError("金額は0以上の整数で入力してください。");
+      return;
+    }
 
     const transactionData = createTransactionData(
       transactionType,
-      item,
+      item.trim(),
       adjustedAmount,
-      date
-    )
+      date,
+    );
 
-    try{
+    try {
       await addTransaction(transactionData);
-
       navigate("/");
-    } catch(err){
-      alert("取引に失敗しました");
-      console.error(err);
+    } catch (error) {
+      setSubmitError("取引を登録できませんでした。時間をおいて再度お試しください。");
+      console.error(error);
     }
   };
 
   const onCancel = () => {
-    // トップページへ遷移
     navigate("/");
   };
 
   return (
     <>
       <Header />
-      <Container as="main" maxW="4xl" py={6}>
+      <Container as="main" maxW="2xl" py={{ base: 6, md: 10 }}>
         <Center>
-          <VStack
-            maxW="xl"
-            width="full"
-            gap={4}
-            as="form"
-            onSubmit={handleSubmit}
-          >
+          <VStack width="full" align="stretch" gap={6}>
+            <VStack align="start" gap={1}>
+              <Heading size="lg">取引を登録</Heading>
+              <Text color="gray.600">
+                支出や収入を入力してください。レシート画像から金額と日付も読み取れます。
+              </Text>
+            </VStack>
 
-          <Field.Root>
-          <Field.Label>レシート画像（任意）</Field.Label>
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={handleReceiptImage}
-            disabled={isReadingReceipt}
-          />
-        </Field.Root>
+            <Card.Root variant="elevated">
+              <Card.Body>
+                <VStack
+                  width="full"
+                  gap={5}
+                  align="stretch"
+                  as="form"
+                  onSubmit={handleSubmit}
+                >
+                  <Field.Root>
+                    <Field.Label>レシート画像（任意）</Field.Label>
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleReceiptImage}
+                      disabled={isReadingReceipt || isLoading}
+                    />
+                    <Field.HelperText>
+                      画像を選ぶと金額と日付を自動入力します（10MB以下）。
+                    </Field.HelperText>
+                  </Field.Root>
 
-        {isReadingReceipt && <Text>金額と日付を読み取り中...</Text>}
+                  {isReadingReceipt && (
+                    <Text role="status" color="teal.700">
+                      金額と日付を読み取り中...
+                    </Text>
+                  )}
 
-        {receiptError && (
-          <Text role="alert" color="red.600">
-            {receiptError}
-          </Text>
-        )}
+                  {receiptError && (
+                    <Text role="alert" color="red.600">
+                      {receiptError}
+                    </Text>
+                  )}
 
-            {/* 支出・収入の選択ボタン */}
-            <RadioGroup.Root
-              value={transactionType}
-              onValueChange={(e) =>
-                setTransactionType(e.value as TransactionType)
-              }
-            >
-              <HStack gap={4}>
-                <RadioGroup.Item value="expense">
-                  <RadioGroup.ItemHiddenInput />
-                  <RadioGroup.ItemIndicator />
-                  <RadioGroup.ItemText>支出</RadioGroup.ItemText>
-                </RadioGroup.Item>
-                <RadioGroup.Item value="income">
-                  <RadioGroup.ItemHiddenInput />
-                  <RadioGroup.ItemIndicator />
-                  <RadioGroup.ItemText>収入</RadioGroup.ItemText>
-                </RadioGroup.Item>
-              </HStack>
-            </RadioGroup.Root>
+                  <Field.Root>
+                    <Field.Label>種類</Field.Label>
+                    <RadioGroup.Root
+                      value={transactionType}
+                      onValueChange={(e) =>
+                        setTransactionType(e.value as TransactionType)
+                      }
+                    >
+                      <HStack gap={6}>
+                        <RadioGroup.Item value="expense">
+                          <RadioGroup.ItemHiddenInput />
+                          <RadioGroup.ItemIndicator />
+                          <RadioGroup.ItemText>支出</RadioGroup.ItemText>
+                        </RadioGroup.Item>
+                        <RadioGroup.Item value="income">
+                          <RadioGroup.ItemHiddenInput />
+                          <RadioGroup.ItemIndicator />
+                          <RadioGroup.ItemText>収入</RadioGroup.ItemText>
+                        </RadioGroup.Item>
+                      </HStack>
+                    </RadioGroup.Root>
+                  </Field.Root>
 
-            {/* フォーム部分 */}
-            <Field.Root required>
-              <Field.Label>項目</Field.Label>
-              <Input
-                placeholder="項目を入力してください"
-                value={item}
-                maxLength={20}
-                onChange={(e) => setItem(e.target.value)}
-              />
-            </Field.Root>
+                  <Field.Root required>
+                    <Field.Label>項目</Field.Label>
+                    <Input
+                      placeholder="例：食費、給料"
+                      value={item}
+                      maxLength={20}
+                      onChange={(e) => setItem(e.target.value)}
+                    />
+                    <Field.HelperText>20文字以内</Field.HelperText>
+                  </Field.Root>
 
-            <Field.Root required>
-              <Field.Label>金額</Field.Label>
-              <Input
-                type="number"
-                placeholder="金額を入力してください"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                min="0"
-              />
-            </Field.Root>
+                  <Field.Root required>
+                    <Field.Label>金額</Field.Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="例：1200"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      min="0"
+                      step="1"
+                    />
+                    <Field.HelperText>円単位で入力してください。</Field.HelperText>
+                  </Field.Root>
 
-            <Field.Root required>
-              <Field.Label>日付</Field.Label>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </Field.Root>
+                  <Field.Root required>
+                    <Field.Label>日付</Field.Label>
+                    <Input
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </Field.Root>
 
-            {/* 登録・キャンセルボタン */}
-            <HStack width="sm" mt={4} gap={3}>
-              <Button
-                type="button"
-                color="gray.500"
-                variant="outline"
-                flex={1}
-                onClick={onCancel}
-                fontWeight="bold"
-              >
-                キャンセル
-              </Button>
-              <Button
-                type="submit"
-                colorPalette="teal"
-                flex={1}
-                fontWeight="bold"
-              >
-                登録
-              </Button>
-            </HStack>
+                  {submitError && (
+                    <Text role="alert" color="red.600">
+                      {submitError}
+                    </Text>
+                  )}
+
+                  <HStack width="full" mt={2} gap={3}>
+                    <Button
+                      type="button"
+                      color="gray.500"
+                      variant="outline"
+                      flex={1}
+                      onClick={onCancel}
+                      fontWeight="bold"
+                      disabled={isLoading}
+                    >
+                      キャンセル
+                    </Button>
+                    <Button
+                      type="submit"
+                      colorPalette="teal"
+                      flex={1}
+                      fontWeight="bold"
+                      loading={isLoading}
+                      disabled={isReadingReceipt}
+                    >
+                      登録
+                    </Button>
+                  </HStack>
+                </VStack>
+              </Card.Body>
+            </Card.Root>
           </VStack>
         </Center>
       </Container>
