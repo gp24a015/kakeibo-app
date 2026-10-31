@@ -248,7 +248,7 @@ function InputPage() {
                       disabled={isReadingReceipt || isLoading}
                     />
                     <Field.HelperText>
-                      画像を選ぶと金額と日付を自動入力します（10MB以下）。
+                      金額の予測にはログインが必要です（ゲスト利用中は利用できません）。画像は10MB以下にしてください。
                     </Field.HelperText>
                   </Field.Root>
 

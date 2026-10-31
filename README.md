@@ -5,7 +5,8 @@
 ## 公開中のアプリ
 
 - **アプリURL:** [https://kakeibo-app-frontend-seven.vercel.app](https://kakeibo-app-frontend-seven.vercel.app)
-- アカウントを作成してログインすると、取引の登録・確認・削除を利用できます。
+- ログインせずにゲストとして取引の登録・確認・削除を試せます。ゲストデータは同じブラウザーで利用し、最終利用から30日で期限切れになります。
+- アカウントを作成するとゲストデータは自動で引き継がれます。既存アカウントへのログイン時は、引き継ぐかどうかを選べます。
 - レシート画像からの金額予測は、バックエンドとレシート予測APIが利用可能な場合に使えます。
 
 アプリのフロントエンドはVercelで公開されています。認証や取引データの読み書きには、別途デプロイされたバックエンドとPostgreSQLデータベースが必要です。レシート予測を使う場合は、バックエンドから到達できるレシート予測APIも必要です。
@@ -97,7 +98,7 @@ DATABASE_USER=your_user
 DATABASE_PASSWORD=your_password
 ```
 
-PostgreSQLにはアプリが使用する `users`、`user_sessions`、`transactions` テーブルが必要です。テーブルの作成・初期化方法はこのリポジトリには含まれていません。
+PostgreSQLにはアプリが使用する `users`、`user_sessions`、`transactions` テーブルが必要です。これらの基本テーブルを新規作成する手順はこのリポジトリには含まれていません。既存データベースでゲスト利用を有効にする移行は [`backend/migrations/001_guest_sessions.sql`](./backend/migrations/001_guest_sessions.sql) を参照してください。
 
 環境変数を設定したら、`backend/` で実行します。
 

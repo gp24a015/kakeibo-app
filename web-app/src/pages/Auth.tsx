@@ -37,6 +37,33 @@ function AuthPage({ mode }: AuthPageProps) {
 
     setIsSubmitting(true);
     try {
+      let importGuestTransactions = false;
+      if (!isSignup) {
+        const guestStatusResponse = await fetch(
+          `${BASE_URL}/auth/guest/status`,
+          { credentials: "include" },
+        );
+        if (!guestStatusResponse.ok) {
+          throw new Error("ゲストデータの状態を確認できませんでした。");
+        }
+
+        const guestStatus = (await guestStatusResponse.json()) as {
+          transactionCount: number;
+        };
+        if (
+          !Number.isSafeInteger(guestStatus.transactionCount) ||
+          guestStatus.transactionCount < 0
+        ) {
+          throw new Error("ゲストデータの状態を確認できませんでした。");
+        }
+
+        if (guestStatus.transactionCount > 0) {
+          importGuestTransactions = window.confirm(
+            `このブラウザーのゲスト取引${guestStatus.transactionCount}件を、ログインするアカウントに引き継ぎますか？\nキャンセルを選ぶと引き継がず、ゲストデータはこのブラウザーに残ります。`,
+          );
+        }
+      }
+
       const response = await fetch(
         `${BASE_URL}/auth/${isSignup ? "signup" : "login"}`,
         {
@@ -45,13 +72,18 @@ function AuthPage({ mode }: AuthPageProps) {
             "Content-Type": "application/json",
           },
           credentials: "include",
-          body: JSON.stringify({ userId, password }),
+          body: JSON.stringify({
+            userId,
+            password,
+            importGuestTransactions,
+          }),
         },
       );
 
       const result = (await response.json()) as {
         message?: string;
         user?: { id: number; userId: string };
+        importedTransactionCount?: number;
       };
 
       if (!response.ok) {
@@ -62,14 +94,10 @@ function AuthPage({ mode }: AuthPageProps) {
         return;
       }
 
-      if (isSignup) {
-        navigate("/login");
-      } else {
-        if (!result.user) {
-          throw new Error("ログイン応答にユーザー情報がありません。");
-        }
-        navigate("/");
+      if (!result.user) {
+        throw new Error("認証応答にユーザー情報がありません。");
       }
+      navigate("/");
     } catch (error) {
       console.error(error);
       setMessage("サーバーに接続できませんでした。");

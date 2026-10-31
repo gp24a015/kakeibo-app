@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Honoで実装された家計簿アプリのバックエンドAPIです。
-    取引データはPostgreSQLに保存されます。
+    取引データはPostgreSQLに保存され、ログインユーザーまたはゲストセッションごとに管理されます。
 servers:
   - url: http://localhost:3000
     description: ローカル開発環境
@@ -20,7 +20,7 @@ paths:
         - Transactions
       summary: 取引一覧を取得
       description: |
-        取引一覧と件数・合計金額を返します。
+        現在のログインユーザーまたはゲストの取引一覧と件数・合計金額を返します。
         typeに応じて収入、支出、または全取引を取得します。
       operationId: getTransactions
       parameters:
@@ -55,14 +55,15 @@ paths:
                 totalAmount: 90000
         "400":
           $ref: "#/components/responses/InvalidTransactionType"
+        "401":
+          description: 有効なログインまたはゲストセッションがありません
 
     post:
       tags:
         - Transactions
       summary: 取引を登録
       description: |
-        取引データを検証し、受け取ったデータを201レスポンスとして返します。
-        現状の実装ではデータは保存されません。
+        取引データを検証し、現在のログインユーザーまたはゲストの所有データとして保存します。
       operationId: createTransaction
       requestBody:
         required: true
@@ -97,6 +98,8 @@ paths:
                 date: "2025-01-03"
         "400":
           $ref: "#/components/responses/InvalidTransaction"
+        "401":
+          description: 有効なログインまたはゲストセッションがありません
 
 components:
   schemas:

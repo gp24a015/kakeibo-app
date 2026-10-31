@@ -6,6 +6,7 @@ import {z} from "zod";
 import {
   createHash,
   randomBytes,
+  randomUUID,
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
@@ -66,6 +67,9 @@ const verifyPassword = async (
 const hashSessionToken = (token: string): string =>
   createHash("sha256").update(token).digest("hex");
 
+const GUEST_SESSION_COOKIE = "kakeibo_guest";
+const GUEST_SESSION_MAX_AGE = 30 * 24 * 60 * 60;
+
 let pool: Pool | undefined;
 const getPool = () => {
   if (!pool) {
@@ -90,14 +94,70 @@ const toYMD = (d: Date) => {
 //セッショントークン検証
 type AppEnv = {
   Variables: {
+    owner: TransactionOwner;
     userId: string;
   };
 };
 
+type TransactionOwner =
+  | { type: "user"; id: string }
+  | { type: "guest"; id: string };
+
 const app = new Hono<AppEnv>();
 
+const setGuestSessionCookie = (c: Context<AppEnv>, token: string) => {
+  setCookie(c, GUEST_SESSION_COOKIE, token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+    maxAge: GUEST_SESSION_MAX_AGE,
+  });
+};
+
+const createOrRefreshGuestSession = async (
+  c: Context<AppEnv>,
+): Promise<string> => {
+  const token = getCookie(c, GUEST_SESSION_COOKIE);
+
+  if (token) {
+    const tokenHash = hashSessionToken(token);
+    const existing = await getPool().query(
+      "SELECT id FROM guest_sessions WHERE token_hash = $1 AND expires_at > NOW()",
+      [tokenHash],
+    );
+
+    if (existing.rows[0]) {
+      const guestId = String(existing.rows[0].id);
+      await getPool().query(
+        "UPDATE guest_sessions SET expires_at = NOW() + INTERVAL '30 days' WHERE id = $1",
+        [guestId],
+      );
+      setGuestSessionCookie(c, token);
+      return guestId;
+    }
+
+    await getPool().query(
+      "DELETE FROM guest_sessions WHERE token_hash = $1 AND expires_at <= NOW()",
+      [tokenHash],
+    );
+  }
+
+  await getPool().query("DELETE FROM guest_sessions WHERE expires_at <= NOW()");
+
+  const guestId = randomUUID();
+  const newToken = randomBytes(32).toString("hex");
+  await getPool().query(
+    `INSERT INTO guest_sessions (id, token_hash, expires_at)
+    VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
+    [guestId, hashSessionToken(newToken)],
+  );
+  setGuestSessionCookie(c, newToken);
+  return guestId;
+};
+
 const requireAuthenticatedUser: MiddlewareHandler<AppEnv> = async (c, next) => {
-    const sessionToken = getCookie(c, "kakeibo_session");
+  const sessionToken = getCookie(c, "kakeibo_session");
 
   if (!sessionToken) {
     return c.json({ message: "ログインが必要です" }, 401);
@@ -119,6 +179,37 @@ const requireAuthenticatedUser: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   c.set("userId", String(session.user_id));
+  await next();
+};
+
+const requireTransactionOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const sessionToken = getCookie(c, "kakeibo_session");
+
+  if (sessionToken) {
+    const result = await getPool().query(
+      `SELECT user_id
+      FROM user_sessions
+      WHERE token_hash = $1
+      AND expires_at > NOW()`,
+      [hashSessionToken(sessionToken)],
+    );
+
+    const session = result.rows[0];
+    if (session) {
+      const userId = String(session.user_id);
+      c.set("owner", { type: "user", id: userId });
+      c.set("userId", userId);
+      await next();
+      return;
+    }
+  }
+
+  if (!getCookie(c, GUEST_SESSION_COOKIE)) {
+    return c.json({ message: "ゲストセッションがありません" }, 401);
+  }
+
+  const guestId = await createOrRefreshGuestSession(c);
+  c.set("owner", { type: "guest", id: guestId });
   await next();
 };
 
@@ -166,7 +257,32 @@ app.post("/auth/logout", async (c) => {
   return c.body(null, 204);
 });
 
-app.get("/transactions",requireAuthenticatedUser,  async (c) => {
+app.post("/auth/guest", async (c) => {
+  await createOrRefreshGuestSession(c);
+  return c.json({ type: "guest" }, 200);
+});
+
+app.get("/auth/guest/status", async (c) => {
+  const token = getCookie(c, GUEST_SESSION_COOKIE);
+
+  if (!token) {
+    return c.json({ transactionCount: 0 }, 200);
+  }
+
+  const result = await getPool().query(
+    `SELECT COUNT(*) AS total
+    FROM transactions
+    WHERE guest_id = (
+      SELECT id FROM guest_sessions
+      WHERE token_hash = $1 AND expires_at > NOW()
+    )`,
+    [hashSessionToken(token)],
+  );
+
+  return c.json({ transactionCount: Number(result.rows[0].total) }, 200);
+});
+
+app.get("/transactions", requireTransactionOwner, async (c) => {
   const type = c.req.query("type");
 
   if (!type || !["income", "expense", "all"].includes(type)) {
@@ -176,11 +292,11 @@ app.get("/transactions",requireAuthenticatedUser,  async (c) => {
     );
   }
 
-  let historyQuery = 'SELECT id, item, amount, date FROM transactions WHERE user_id = $1';
-
-  let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id = $1';
-
-  const params: string[] = [c.get("userId")];
+  const owner = c.get("owner");
+  const ownerColumn = owner.type === "user" ? "user_id" : "guest_id";
+  const params = [owner.id];
+  let historyQuery = `SELECT id, item, amount, date FROM transactions WHERE ${ownerColumn} = $1`;
+  let countQuery = `SELECT COUNT(*) as total FROM transactions WHERE ${ownerColumn} = $1`;
 
   if (type === "income" || type === "expense"){
     const addTypeQuery = 
@@ -216,7 +332,7 @@ app.get("/transactions",requireAuthenticatedUser,  async (c) => {
 });
 
 //ポストを行うAPI
-app.post("/transactions", requireAuthenticatedUser, async (c) => {
+app.post("/transactions", requireTransactionOwner, async (c) => {
   const body = await c.req.json();
 
   const { item, amount, date } = body;
@@ -233,12 +349,21 @@ app.post("/transactions", requireAuthenticatedUser, async (c) => {
     return c.json({message: "日付はYYYY-MM-DD形式で入力してください"}, 400);
   }
 
-  const result = await getPool().query(
-    `INSERT INTO transactions (item, amount, date, user_id)
-    VALUES ($1, $2, $3, $4)
-    RETURNING id, item, amount, date`,
-    [item, amount, date, c.get("userId")],
-  );
+  const owner = c.get("owner");
+  const result =
+    owner.type === "user"
+      ? await getPool().query(
+          `INSERT INTO transactions (item, amount, date, user_id, guest_id)
+          VALUES ($1, $2, $3, $4, NULL)
+          RETURNING id, item, amount, date`,
+          [item, amount, date, owner.id],
+        )
+      : await getPool().query(
+          `INSERT INTO transactions (item, amount, date, user_id, guest_id)
+          VALUES ($1, $2, $3, NULL, $4)
+          RETURNING id, item, amount, date`,
+          [item, amount, date, owner.id],
+        );
 
   const newTransaction = {
     id: parseInt(result.rows[0].id),
@@ -251,16 +376,18 @@ app.post("/transactions", requireAuthenticatedUser, async (c) => {
 });
 
 //削除を行うAPI
-app.delete("/transactions/:id", requireAuthenticatedUser, async (c) => {
+app.delete("/transactions/:id", requireTransactionOwner, async (c) => {
   const id = c.req.param("id"); // 例: "12"
   const numericId = Number(id); // 例: 12
   
   if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(numericId)) {
     return c.json({ message: "idは正の整数である必要があります" }, 400);
   }
+  const owner = c.get("owner");
+  const ownerColumn = owner.type === "user" ? "user_id" : "guest_id";
   const result = await getPool().query(
-    "DELETE FROM transactions WHERE id = $1 AND user_id = $2 RETURNING id",
-    [numericId, c.get("userId")],
+    `DELETE FROM transactions WHERE id = $1 AND ${ownerColumn} = $2 RETURNING id`,
+    [numericId, owner.id],
   );
 
   if (result.rowCount != 1){
@@ -289,13 +416,53 @@ app.post("/auth/signup", async (c) => {
 
   const { userId, password } = parsed.data;
   const passwordHash = await hashPassword(password);
+  const sessionToken = randomBytes(32).toString("hex");
+  const guestToken = getCookie(c, GUEST_SESSION_COOKIE);
+  const client = await getPool().connect();
+  let user: { id: string | number; user_id: string };
+  let importedTransactionCount = 0;
 
   try {
-    await getPool().query(
-      "INSERT INTO users (user_id, password_hash) VALUES ($1, $2)",
+    await client.query("BEGIN");
+    const userResult = await client.query(
+      `INSERT INTO users (user_id, password_hash)
+      VALUES ($1, $2)
+      RETURNING id, user_id`,
       [userId, passwordHash],
     );
+    user = userResult.rows[0];
+
+    if (guestToken) {
+      const guestResult = await client.query(
+        `SELECT id FROM guest_sessions
+        WHERE token_hash = $1 AND expires_at > NOW()
+        FOR UPDATE`,
+        [hashSessionToken(guestToken)],
+      );
+      const guest = guestResult.rows[0];
+
+      if (guest) {
+        const transferResult = await client.query(
+          `UPDATE transactions
+          SET user_id = $1, guest_id = NULL
+          WHERE guest_id = $2`,
+          [user.id, guest.id],
+        );
+        importedTransactionCount = transferResult.rowCount ?? 0;
+        await client.query("DELETE FROM guest_sessions WHERE id = $1", [
+          guest.id,
+        ]);
+      }
+    }
+
+    await client.query(
+      `INSERT INTO user_sessions (token_hash, user_id, expires_at)
+      VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+      [hashSessionToken(sessionToken), user.id],
+    );
+    await client.query("COMMIT");
   } catch (error) {
+    await client.query("ROLLBACK");
     if (
       typeof error === "object" &&
       error !== null &&
@@ -306,9 +473,34 @@ app.post("/auth/signup", async (c) => {
     }
 
     throw error;
+  } finally {
+    client.release();
   }
 
-  return c.json({ message: "登録完了しました" }, 201);
+  setCookie(c, "kakeibo_session", sessionToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60,
+  });
+  if (guestToken) {
+    deleteCookie(c, GUEST_SESSION_COOKIE, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      path: "/",
+    });
+  }
+
+  return c.json(
+    {
+      message: "登録完了しました",
+      user: { id: user.id, userId: user.user_id },
+      importedTransactionCount,
+    },
+    201,
+  );
 });
 
 //ログイン機能のAPI
@@ -318,6 +510,7 @@ app.post("/auth/login", async (c) => {
   const loginSchema = z.object({
     userId: z.string().trim().min(1).max(50),
     password: z.string().min(1).max(128),
+    importGuestTransactions: z.boolean().optional().default(false),
   });
 
   const parsed = loginSchema.safeParse(body);
@@ -326,7 +519,7 @@ app.post("/auth/login", async (c) => {
     return c.json({ message: "IDとパスワードを入力してください" }, 400);
   }
 
-  const { userId, password } = parsed.data;
+  const { userId, password, importGuestTransactions } = parsed.data;
 
   const result = await getPool().query(
     "SELECT id, user_id, password_hash FROM users WHERE user_id = $1",
@@ -340,12 +533,50 @@ app.post("/auth/login", async (c) => {
   }
 
   const sessionToken = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const guestToken = getCookie(c, GUEST_SESSION_COOKIE);
+  const client = await getPool().connect();
+  let importedTransactionCount = 0;
+  let mergedGuestSession = false;
 
-  await getPool().query(
-    "INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES ($1, $2, $3)",
-    [hashSessionToken(sessionToken), user.id, expiresAt],
-  );
+  try {
+    await client.query("BEGIN");
+
+    if (importGuestTransactions && guestToken) {
+      const guestResult = await client.query(
+        `SELECT id FROM guest_sessions
+        WHERE token_hash = $1 AND expires_at > NOW()
+        FOR UPDATE`,
+        [hashSessionToken(guestToken)],
+      );
+      const guest = guestResult.rows[0];
+
+      if (guest) {
+        const transferResult = await client.query(
+          `UPDATE transactions
+          SET user_id = $1, guest_id = NULL
+          WHERE guest_id = $2`,
+          [user.id, guest.id],
+        );
+        importedTransactionCount = transferResult.rowCount ?? 0;
+        await client.query("DELETE FROM guest_sessions WHERE id = $1", [
+          guest.id,
+        ]);
+        mergedGuestSession = true;
+      }
+    }
+
+    await client.query(
+      `INSERT INTO user_sessions (token_hash, user_id, expires_at)
+      VALUES ($1, $2, NOW() + INTERVAL '7 days')`,
+      [hashSessionToken(sessionToken), user.id],
+    );
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 
   setCookie(c, "kakeibo_session", sessionToken, {
     httpOnly: true,
@@ -354,8 +585,22 @@ app.post("/auth/login", async (c) => {
     path: "/",
     maxAge: 7 * 24 * 60 * 60,
   });
+  if (mergedGuestSession) {
+    deleteCookie(c, GUEST_SESSION_COOKIE, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      path: "/",
+    });
+  }
 
-  return c.json({ user: { id: user.id, userId: user.user_id } }, 200);
+  return c.json(
+    {
+      user: { id: user.id, userId: user.user_id },
+      importedTransactionCount,
+    },
+    200,
+  );
 });
 
 //推論APIとの通信

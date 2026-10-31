@@ -22,7 +22,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 type SessionState =
   | { status: "loading" }
   | { status: "authenticated"; userId: string }
-  | { status: "unauthenticated" }
+  | { status: "guest" }
   | { status: "error"; message: string };
 
 function Home(){
@@ -42,7 +42,7 @@ function Home(){
         });
 
         if (response.status === 401) {
-          setSession({ status: "unauthenticated" });
+          setSession({ status: "guest" });
           return;
         }
         if (!response.ok) {
@@ -83,8 +83,21 @@ function Home(){
         throw new Error(`ログアウトに失敗しました (${response.status})`);
       }
 
-      setSession({ status: "unauthenticated" });
+      const guestResponse = await fetch(`${BASE_URL}/auth/guest`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!guestResponse.ok) {
+        throw new Error("ゲスト利用を開始できませんでした。");
+      }
+
+      setSession({ status: "guest" });
     } catch (error) {
+      setSession({
+        status: "error",
+        message:
+          error instanceof Error ? error.message : "ログアウトに失敗しました。",
+      });
       setLogoutError(
         error instanceof Error ? error.message : "ログアウトに失敗しました。",
       );
@@ -121,6 +134,9 @@ function Home(){
                 <Text alignSelf="center">ログイン状態を確認中...</Text>
               ) : (
                 <>
+                  {session.status === "guest" && (
+                    <Text alignSelf="center">ゲスト利用中</Text>
+                  )}
                   {session.status === "error" && (
                     <Text role="alert" color="red.600" alignSelf="center">
                       {session.message}
